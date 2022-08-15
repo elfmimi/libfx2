@@ -48,6 +48,7 @@
 #define ID_DAP_SWJ_Clock                0x11U
 #define ID_DAP_SWJ_Sequence             0x12U
 #define ID_DAP_SWD_Configure            0x13U
+#define ID_DAP_SWD_Sequence             0x1DU
 
 #define ID_DAP_ExecuteCommands          0x7FU
 
@@ -110,11 +111,13 @@ extern "C"
 
 // Functions
 extern void SWD_Init();
-extern void SWJ_Cycle(uint8_t bits);
+extern void SWD_WriteSequence(uint8_t num, __xdata const uint8_t *ptr);
+extern void SWD_ReadSequence(uint8_t num, __xdata uint8_t *ptr);
 extern uint8_t SWD_Transfer(uint8_t request /* , uint32_t *data */);
 
 extern uint16_t dap_execute_command(uint16_t idxidx, uint8_t len);
-extern uint16_t dap_execute_sequence(uint16_t idxidx, uint8_t len);
+extern uint16_t dap_execute_swj_sequence(uint16_t idxidx, uint8_t len);
+extern uint16_t dap_execute_swd_sequence(uint16_t idxidx, uint8_t len);
 extern uint16_t dap_execute_transfer(uint16_t idxidx, uint8_t len);
 extern uint16_t dap_execute_transfer_block(uint16_t idxidx, uint8_t len);
 

@@ -43,7 +43,7 @@ uint8_t data[4];
 uint16_t dap_execute_command(uint16_t idxidx, uint8_t len) {
   (void)len;
   uint8_t idx = idxidx & 0xFF;
-  uint8_t *ptr = &EP2FIFOBUF[idxidx >> 8];
+  __xdata uint8_t *ptr = &EP2FIFOBUF[idxidx >> 8];
   uint8_t cmd = *ptr++;
   scratch[idx++] = cmd;
   if (cmd == ID_DAP_ExecuteCommands) {
@@ -102,7 +102,7 @@ uint16_t dap_execute_command(uint16_t idxidx, uint8_t len) {
       scratch[idx++] = 1;
       scratch[idx++] = 1;
     } else {
-      idx--;
+      scratch[idx++] = 0;
     }
   } else if (cmd == ID_DAP_HostStatus) {
     if (*ptr == 0) {
@@ -130,15 +130,14 @@ uint16_t dap_execute_command(uint16_t idxidx, uint8_t len) {
   } else if (cmd == ID_DAP_SWD_Configure) {
     ptr += 1;
     // Configure pins
-    // PIN_SWDIO = 1;      // set SWDIO to high
-    // PIN_SWCLK = 1;      // set SWCLK to high
-    // PIN_SWDIO_OE |= PIN_SWDIO_MASK;
-    // PIN_SWCLK_OE |= PIN_SWCLK_MASK;
     SWD_Init();
     scratch[idx++] = DAP_OK;
   } else if (cmd == ID_DAP_SWJ_Sequence) {
     idxidx = (uint16_t)idx | (uint16_t)((uint16_t)ptr & 0xFF) << 8;
-    return dap_execute_sequence(idxidx, len);
+    return dap_execute_swj_sequence(idxidx, len);
+  } else if (cmd == ID_DAP_SWD_Sequence) {
+    idxidx = (uint16_t)idx | (uint16_t)((uint16_t)ptr & 0xFF) << 8;
+    return dap_execute_swd_sequence(idxidx, len);
   } else {
     scratch[idx++] = DAP_ERROR;
   }
@@ -146,37 +145,61 @@ uint16_t dap_execute_command(uint16_t idxidx, uint8_t len) {
   return idxidx;
 }
 
-uint16_t dap_execute_sequence(uint16_t idxidx, uint8_t len) {
+uint16_t dap_execute_swj_sequence(uint16_t idxidx, uint8_t len) {
   (void)len;
   uint8_t idx = idxidx & 0xFF;
-  uint8_t *ptr = &EP2FIFOBUF[idxidx >> 8];
+  __xdata uint8_t *ptr = &EP2FIFOBUF[idxidx >> 8];
 
-  led_blink();
+  // led_blink();
 
   uint8_t num = *ptr++;
   // num == 0 indicates 256bits
-  if ((num & 7) != 0) {
-    num = (num ^ 7) + 9;
-  }
-  do {
-    uint8_t bits = *ptr++;
-    num -= 8;
-    uint8_t n = ((num & 0xF8) != 0) ? 8 : 8 - num;
-    for (uint8_t i=0; i < n; i++) {
-      SWJ_Cycle(bits);
-      bits >>= 1;
-    }
-  } while((num & 0xF8) != 0);
+  SWD_WriteSequence(num, ptr);
+  ptr += (uint8_t)(((uint8_t)(num - 1) >> 3) + 1);
   scratch[idx++] = DAP_OK;
+  idxidx = (uint16_t)idx | (uint16_t)((uint16_t)ptr & 0xFF) << 8;
+  return idxidx;
+}
+
+uint16_t dap_execute_swd_sequence(uint16_t idxidx, uint8_t len) {
+  (void)len;
+  uint8_t idx = idxidx & 0xFF;
+  __xdata uint8_t *ptr = &EP2FIFOBUF[idxidx >> 8];
+
+  // led_blink();
+
+  scratch[idx++] = DAP_OK;
+  uint8_t count = *ptr++;
+  while (count--) {
+    uint8_t num = *ptr++;
+    if ((num & 0x80) == 0) {
+      num &= 0x3F;
+      // num == 0 indicates 64bits
+      if (num == 0) {
+        num = 64;
+      }
+      SWD_WriteSequence(num, ptr);
+      ptr += ((uint8_t)(num + 7) >> 3);
+    } else {
+      num &= 0x3F;
+      // num == 0 indicates 64bits
+      if (num == 0) {
+        num = 64;
+      }
+      SWD_ReadSequence(num, &scratch[idx]);
+      idx += ((uint8_t)(num + 7) >> 3);
+    }
+  }
+
   idxidx = (uint16_t)idx | (uint16_t)((uint16_t)ptr & 0xFF) << 8;
   return idxidx;
 }
 
 uint16_t dap_execute_transfer(uint16_t idxidx, uint8_t len) {
   (void)len;
-  uint8_t *request = &EP2FIFOBUF[idxidx >> 8];
+  __xdata uint8_t *request = &EP2FIFOBUF[idxidx >> 8];
   uint8_t idx = idxidx & 0xFF;
-  uint8_t *response = &scratch[idx];
+  __xdata uint8_t *response = &scratch[idx];
 
   // uint8_t dap_port = *ptr++;
   // uint8_t cnt = *ptr++;
@@ -186,7 +209,7 @@ uint16_t dap_execute_transfer(uint16_t idxidx, uint8_t len) {
   // uint8_t  *request_head;
   uint8_t  request_count;
   uint8_t  request_value;
-  uint8_t  *response_head;
+  __xdata uint8_t *response_head;
   uint8_t  response_count;
   uint8_t  response_value;
   uint8_t  post_read;
@@ -443,9 +466,9 @@ end:
 
 uint16_t dap_execute_transfer_block(uint16_t idxidx, uint8_t len) {
   (void)len;
-  uint8_t *request = &EP2FIFOBUF[idxidx >> 8];
+  __xdata uint8_t *request = &EP2FIFOBUF[idxidx >> 8];
   uint8_t idx = idxidx & 0xFF;
-  uint8_t *response = &scratch[idx];
+  __xdata uint8_t *response = &scratch[idx];
 
   // static uint32_t DAP_SWD_TransferBlock(const uint8_t *request, uint8_t *response) {
 
@@ -453,7 +476,7 @@ uint16_t dap_execute_transfer_block(uint16_t idxidx, uint8_t len) {
   uint8_t  request_value;
   uint16_t  response_count;
   uint8_t  response_value;
-  uint8_t  *response_head;
+  __xdata uint8_t  *response_head;
   uint8_t  retry;
   // uint32_t  data;
 
