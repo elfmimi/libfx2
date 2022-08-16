@@ -114,7 +114,7 @@ void SWD_ReadSequence(uint8_t num, __xdata uint8_t *ptr) {
     for (uint8_t i=0; i < n; i++) {
       PIN_SWCLK = 0;      // set SWCLK to low
       if (PIN_SWDIO) {
-	bits |= bit;
+        bits |= bit;
       }
       PIN_SWCLK = 1;      // set SWCLK to high
       bit += bit;
@@ -135,7 +135,7 @@ uint8_t SWD_Transfer (uint8_t request /* , uint32_t *data */) {
   uint8_t val;
   uint8_t parity;
 
-  uint8_t n;
+  uint8_t m, n;
 
   /* Packet Request */
   PIN_SWDIO_OUT(1);
@@ -176,18 +176,21 @@ uint8_t SWD_Transfer (uint8_t request /* , uint32_t *data */) {
     /* Data transfer */
     if (request & DAP_TRANSFER_RnW) {
       /* Read data */
-      val = 0;
       parity = 0;
-      for (n = 0; n < 32; n++) {
-        SW_READ_BIT(bit);               /* Read RDATA[0:31] */
-        parity += bit;
-        val >>= 1;
-        val  |= bit << 7;
-	if ((n & 7) == 7)
-	  data[n >> 3] = val;
+      for (m = 0; m < 4; m++) {
+        val = 0;
+        for (n = 0; n < 8; n++) {
+          SW_READ_BIT(bit);               /* Read RDATA[0:31] */
+          val |= bit;
+          val = (val >> 1) | (val << 7);
+        }
+        // 8051 trick here, to calculate parity
+        ACC = val;
+        parity += P;
+        data[m] = val;
       }
       SW_READ_BIT(bit);                 /* Read Parity */
-      if ((parity ^ bit) & 1) {
+      if ((parity + bit) & 1) {
         ack = DAP_TRANSFER_ERROR;
       }
       // if (data) { *data = val; }
@@ -205,13 +208,15 @@ uint8_t SWD_Transfer (uint8_t request /* , uint32_t *data */) {
       /* Write data */
       // val = *data;
       parity = 0;
-      val = 0;
-      for (n = 0; n < 32; n++) {
-        if ((n & 7) == 0)
-          val = data[n >> 3];
-        SW_WRITE_BIT(val);              /* Write WDATA[0:31] */
-        parity += val;
-        val >>= 1;
+      for (m = 0; m < 4; m++) {
+        val = data[m];
+        // 8051 trick here, to calculate parity
+        ACC = val;
+        parity += P;
+        for (n = 0; n < 8; n++) {
+          SW_WRITE_BIT(val);              /* Write WDATA[0:31] */
+          val = (val >> 1) | (val << 7);
+        }
       }
       SW_WRITE_BIT(parity);             /* Write Parity Bit */
     }
